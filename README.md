@@ -4,7 +4,7 @@ RealUsernames is a mediawiki extension that shows user real names (almost) every
 
 ## Installation
 
-- Current version requires `MediaWiki >=1.31 <1.36`
+- Current version requires `MediaWiki >=1.39`. Use release [v0.99.35](https://github.com/stronk7/RealUsernames/releases/tag/v0.99.35) for MediaWiki `MediaWiki >=1.31 <1.36`.
 - [Download and unzip it](https://github.com/stronk7/RealUsernames/releases) (or clone this git repo).
 - Copy the folder as `RealUsernames` within the `extensions`directory of your mediawiki site.
 
@@ -26,6 +26,9 @@ $wgRealUsernames_linkref = true;
 // Show the username together with the real user name.
 // (useful for some pages like the "block" one)
 $wgRealUsernames_append_username = true;
+
+// Enable separate debug for the extension.
+// $wgDebugLogGroups['RealUsernames'] = '/tmp/RealUsernames.log';
 ```
 
 ### Other settings
@@ -55,13 +58,15 @@ index 5b75287603..b59d5b400f 100644
          */
         public function getUserSig( User $user, $nickname = false, $fancySig = null ) {
 -               $username = $user->getName();
-+               $username = $user->getRealName(); // UserRealnames hack!
++               $username = $user->getRealName(); // RealUsernames hack!
  
                 # If not given, retrieve from the user object.
                 if ( $nickname === false ) {
 ```
 
 Note the modification above has been used since Mediawiki 1.17 without problems for sites having the real user names enabled and it has worked perfectly, so far.
+
+Also, with `v0.99.39` and up, it's recommended to suppress the output, via CSS/Skin hack of the `mw-userpage-userdoesnotexist` message warning (towards a better experience for users setting up their real-username pages).
 
 Of course, for anybody eager to render the hack not needed anymore and to provide a solution implementing it within the extension, the next chapter may be of interest. ;-)
 

@@ -1,6 +1,6 @@
 {
 	"name": "RealUsernames",
-	"version": "0.99.35",
+	"version": "0.99.39",
 	"author": [
 		"Eloy Lafuente (stronk7)"
 	],
@@ -9,34 +9,40 @@
 	"license-name": "BSD-3-Clause",
 	"type": "other",
 	"requires": {
-		"MediaWiki": ">=1.31 <1.36"
+		"MediaWiki": ">=1.39"
 	},
-    "AutoloadClasses": {
-		"RealUsernames": "includes/RealUsernames.php"
+	"AutoloadClasses": {
+		"MediaWiki\\Extension\\RealUsernames": "includes/RealUsernames.php"
 	},
 	"config": {
-		"wgRealUsernames_linktext": {
+		"RealUsernames_linktext": {
 			"value": true,
 			"description": "Control if we want link text to be replaced by real usernames"
 		},
-		"wgRealUsernames_linkref": {
+		"RealUsernames_linkref": {
 			"value": true,
 			"description": "Control if we want link refs to be replaced by real usernames"
 		},
-		"wgRealUsernames_append_username": {
+		"RealUsernames_append_username": {
 			"value": true,
-			"description": "Control if some roles (those having perms to 'block' users) should be able to see the username together with the realname."
+			"description": "Control if some roles (those having perms to 'block' users) should be able to see the username together with the realname"
+		}
+	},
+	"ConfigRegistry": {
+		"RealUsernames": "GlobalVarConfig::newInstance"
+	},
+	"HookHandlers": {
+		"RealUsernames": {
+			"class": "MediaWiki\\Extension\\RealUsernames"
 		}
 	},
 	"Hooks": {
-		"LinkBegin": [
-			"RealUsernames::hookLinkBegin"
-		],
+		"HtmlPageLinkRendererBegin": "RealUsernames",
 		"PersonalUrls": [
-			"RealUsernames::hookPersonalUrls"
+			"MediaWiki\\Extension\\RealUsernames::hookPersonalUrls"
 		],
-		"ParserBeforeStrip": [
-			"RealUsernames::hookParser"
+		"ParserBeforeInternalParse": [
+			"MediaWiki\\Extension\\RealUsernames::hookParser"
 		]
 	},
 	"manifest_version": 2

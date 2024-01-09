@@ -1,11 +1,25 @@
 <?php
+
+namespace MediaWiki\Extension;
+
+use MediaWiki\Linker\Hook\HtmlPageLinkRendererBeginHook;
+
+use ConfigFactory;
+use Html;
+use HtmlArmor;
+use Linker;
+use RequestContext;
+use Title;
+use TitleValue;
+use User;
+
 /**
- * Show user real name (almost) everywhere within a wiki site
+ * Show user real name (almost) everywhere within a wiki site.
  *
  * @copyright 2013 onwards Eloy Lafuente (stronk7)
  * @license https://opensource.org/licenses/BSD-3-Clause BSD 3-Clause
  */
-class RealUsernames {
+class RealUsernames implements HtmlPageLinkRendererBeginHook {
 
     /**
      * Let's cache page (articleid) existence for every title, namespace pair.
@@ -23,13 +37,20 @@ class RealUsernames {
      *   - ...
      */
     public static function hookParser(&$parser, &$text, &$strip_state) {
-        global $wgUser;
-        global $wgRealUsernames_linktext;
-        global $wgRealUsernames_linkref;
-        global $wgRealUsernames_append_username;
+        // Get the current user.
+        $user = RequestContext::getMain()->getUser();
+
+        // Get the configuration.
+        $config = ConfigFactory::getDefaultInstance()->makeConfig('RealUsernames');
+        $linkText = $config->get('RealUsernames_linktext');
+        $linkRef = $config->get('RealUsernames_linkref');
+        $appendUsername = $config->get('RealUsernames_append_username');
+
+        // Get the current user.
+        $user = RequestContext::getMain()->getUser();
 
         // Nothing to do if text and ref replacement are not enabled.
-        if ($wgRealUsernames_linktext !== true && $wgRealUsernames_linkref !== true) {
+        if ($linkText !== true && $linkRef !== true) {
             return true;
         }
 
@@ -66,17 +87,21 @@ class RealUsernames {
      * Replace the texts and refs in the personal urls (top-right)
      */
     public static function hookPersonalUrls(array &$personal_urls, Title $title) {
-        global $wgUser;
-        global $wgRealUsernames_linktext;
-        global $wgRealUsernames_linkref;
-        global $wgRealUsernames_append_username;
+        // Get the current user.
+        $user = RequestContext::getMain()->getUser();
+
+        // Get the configuration.
+        $config = ConfigFactory::getDefaultInstance()->makeConfig('RealUsernames');
+        $linkText = $config->get('RealUsernames_linktext');
+        $linkRef = $config->get('RealUsernames_linkref');
+        $appendUsername = $config->get('RealUsernames_append_username');
 
         // Nothing to do if text and ref replacement are not enabled.
-        if ($wgRealUsernames_linktext !== true && $wgRealUsernames_linkref !== true) {
+        if ($linkText !== true && $linkRef !== true) {
             return true;
         }
 
-        $username = $wgUser->getName();
+        $username = $user->getName();
         wfDebugLog('RealUsernames', __METHOD__ . ": personal urls received for " . $username);
 
         // Get the real username for the username
@@ -89,14 +114,14 @@ class RealUsernames {
         }
 
         // Let's apply real usernames to the texts.
-        if ($wgRealUsernames_linktext === true) {
+        if ($linkText === true) {
             // To the "userpage" text
             if (isset($personal_urls['userpage'])) {
                 if ($personal_urls['userpage']['text'] === $username) {
                     $text = $realusername;
-                    // With $wgRealUsernames_append_username enabled, users with "block" permissions
+                    // With $appendUsername enabled, users with "block" permissions
                     // see the username together with the real username.
-                    if ($wgRealUsernames_append_username === true && $wgUser->isAllowed('block')) {
+                    if ($appendUsername === true && $user->isAllowed('block')) {
                         $text = $text . ' (' . $username . ')';
                     }
                     $personal_urls['userpage']['text'] = $text;
@@ -106,7 +131,7 @@ class RealUsernames {
         }
 
         // Let's apply real usernames to the hrefs.
-        if ($wgRealUsernames_linkref === true) {
+        if ($linkRef === true) {
             // To the "userpage" href
             if (isset($personal_urls['userpage'])) {
                 $title = Title::newFromText($realusername, NS_USER);
@@ -133,14 +158,18 @@ class RealUsernames {
     /**
      * Replace the texts and refs to any NS_USER and NS_USER_TALK page to the realname alternative.
      */
-    public static function hookLinkBegin($dummy, $target, &$text, &$customAttribs, &$query, &$options, &$ret) {
-        global $wgUser;
-        global $wgRealUsernames_linktext;
-        global $wgRealUsernames_linkref;
-        global $wgRealUsernames_append_username;
+    public function onHtmlPageLinkRendererBegin($linkRenderer, $target, &$text, &$extraAttribs, &$query, &$ret) {
+        // Get the current user.
+        $user = RequestContext::getMain()->getUser();
+
+        // Get the configuration.
+        $config = ConfigFactory::getDefaultInstance()->makeConfig('RealUsernames');
+        $linkText = $config->get('RealUsernames_linktext');
+        $linkRef = $config->get('RealUsernames_linkref');
+        $appendUsername = $config->get('RealUsernames_append_username');
 
         // Nothing to do if text and ref replacement are not enabled.
-        if ($wgRealUsernames_linktext !== true && $wgRealUsernames_linkref !== true) {
+        if (!$linkText && !$linkRef) {
             return true;
         }
 
@@ -149,8 +178,13 @@ class RealUsernames {
             return true;
         }
 
-        $username = $target->getText();
-        wfDebugLog('RealUsernames', __METHOD__ . ": link received ".$username);
+        // Default values, to start with.
+        $username = $convertedtext = $target->getText();
+
+        // If the namespace is user talk, then the text is always "talk".
+        if ($target->getNamespace() === NS_USER_TALK) {
+            $convertedtext = wfMessage('talkpagelinktext')->text();
+        }
 
         // Get the real username for the username
         $realusername = self::get_realusername_from_username($username);
@@ -158,36 +192,60 @@ class RealUsernames {
         if ($realusername === '') {
             $realusername = $username;
         } else {
-            wfDebugLog('RealUsernames', __METHOD__ . ": link change ". $username . " to " . $realusername);
+            $ns = $target->getNsText();
+            wfDebugLog('RealUsernames', __METHOD__ . ": change '$ns:$username' to '$ns:$realusername'");
         }
 
-        // Let's apply real usernames to the texts.
-        if ($wgRealUsernames_linktext === true) {
-            // if ($text === ${username}) {           // Only replace if the text was originally the username.
-            if ($text === "<bdi>${username}</bdi>") { // (since MW link text comes surrounded by <bdi> tag, so looking for it.
-                $text = $realusername;
-                // With $wgRealUsernames_append_username enabled, users with "block" permissions
-                // see the username together with the real username.
-                if ($wgRealUsernames_append_username === true && $wgUser->isAllowed('block')) {
-                    // Only if real username and username are different.
-                    if ($username !== $realusername) {
-                        $text = $text . ' (' . $username . ')';
-                    }
+        // Let's apply real usernames to the texts ($text). Only for use namespace.
+        if ($linkText && $target->getNamespace() === NS_USER) {
+            $convertedtext = $realusername;
+            // With $appendUsername enabled, users with "block" permissions
+            // see the username together with the real username.
+            if ($appendUsername && $user->isAllowed('block')) {
+                // Only if real username and username are different.
+                if ($username !== $realusername) {
+                    $convertedtext = $convertedtext . ' (' . $username . ')';
                 }
             }
-            wfDebugLog('RealUsernames', __METHOD__ . ": link text change to " . $realusername);
+            // Finally, enclose it in a <bdi> tag to avoid LTR/RTL issues.
+            $convertedtext = new HtmlArmor("<bdi>$convertedtext</bdi>");
+            // Arrived here, if we only want to change the text, let's do it and done.
+            if (!$linkRef) {
+                $text = $convertedtext;
+                wfDebugLog('RealUsernames', __METHOD__ . ": link text change to " . $convertedtext);
+                return true; // Use $text.
+            }
         }
+
+        // We also want to change the ref, we need to do that manipulating the $ret (anchor html tag) directly.
         // Let's apply real usernames to the hrefs.
-        if ($wgRealUsernames_linkref === true) {
-            $target->mTextform = $realusername;
-            $target->mDbkeyform = str_replace(' ', '_', $target->mTextform);
-            $target->mUrlform = wfUrlencode($target->mDbkeyform);
-            // Get and cache articleID to render a good or wrong link.
-            $target->mArticleID = self::get_article_id($target);
-            $options = array_diff($options, array('broken')); // Don't accept any predefined "broken" link. Recalculate.
-            wfDebugLog('RealUsernames', __METHOD__ . ": link href change to " . $target->mDbkeyform);
+        if ($linkRef) {
+            // Create a link to the real username page.
+            // Calculate which the new real target is going to be.
+            $realTarget = Title::newFromText($realusername, $target->getNamespace());
+            $convertedref = $realTarget->getLocalURL();
+            $classes = isset($extraAttribs['class']) ? $extraAttribs['class'] : '';
+            // Get and cache articleID (user and talk page ids) to render a good or wrong link.
+            $id = self::get_article_id($realTarget);
+
+            // Add the new class and edit URL if the page does not exist.
+            if (!$realTarget->isKnown()) {
+                $classes = 'new' . (!empty($classes['class']) ? ' ' . $classes['class'] : '');
+                $convertedref = $realTarget->getLocalURL(['action' => 'edit', 'redlink' => '1']);
+            }
+
+            // Finally, create the new anchor tag.
+            $ret = Html::rawElement(
+                'a',
+                [
+                    'href' => $convertedref,
+                    'class' => $classes,
+                ],
+                HtmlArmor::getHtml($convertedtext)
+            );
+            wfDebugLog('RealUsernames', __METHOD__ . ": link text and href change to " . $convertedref);
         }
-        return true;
+        return false; // Use $ret.
     }
 
     /**
@@ -197,7 +255,7 @@ class RealUsernames {
      */
     protected static function get_article_id($title) {
 
-        $cachekey = $title->mDbkeyform . '$#$' . $title->mNamespace;
+        $cachekey = $title->getDBkey() . '$#$' . $title->getNamespace();
 
         // If the $title is not in the cache, let's look for it.
         if (!isset(self::$articleids[$cachekey])) {
