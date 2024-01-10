@@ -38,9 +38,7 @@
 	},
 	"Hooks": {
 		"HtmlPageLinkRendererBegin": "RealUsernames",
-		"PersonalUrls": [
-			"MediaWiki\\Extension\\RealUsernames::hookPersonalUrls"
-		],
+        "SkinTemplateNavigation::Universal": "RealUsernames",
 		"ParserBeforeInternalParse": [
 			"MediaWiki\\Extension\\RealUsernames::hookParser"
 		]

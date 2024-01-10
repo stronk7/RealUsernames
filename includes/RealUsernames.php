@@ -2,6 +2,7 @@
 
 namespace MediaWiki\Extension;
 
+use MediaWiki\Hook\SkinTemplateNavigation__UniversalHook;
 use MediaWiki\Linker\Hook\HtmlPageLinkRendererBeginHook;
 
 use ConfigFactory;
@@ -19,7 +20,7 @@ use User;
  * @copyright 2013 onwards Eloy Lafuente (stronk7)
  * @license https://opensource.org/licenses/BSD-3-Clause BSD 3-Clause
  */
-class RealUsernames implements HtmlPageLinkRendererBeginHook {
+class RealUsernames implements SkinTemplateNavigation__UniversalHook, HtmlPageLinkRendererBeginHook {
 
     /**
      * Let's cache page (articleid) existence for every title, namespace pair.
@@ -86,7 +87,7 @@ class RealUsernames implements HtmlPageLinkRendererBeginHook {
     /**
      * Replace the texts and refs in the personal urls (top-right)
      */
-    public static function hookPersonalUrls(array &$personal_urls, Title $title) {
+    public function onSkinTemplateNavigation__Universal($skinTemplate, &$links): void {
         // Get the current user.
         $user = RequestContext::getMain()->getUser();
 
@@ -97,12 +98,23 @@ class RealUsernames implements HtmlPageLinkRendererBeginHook {
         $appendUsername = $config->get('RealUsernames_append_username');
 
         // Nothing to do if text and ref replacement are not enabled.
-        if ($linkText !== true && $linkRef !== true) {
-            return true;
+        if (!$linkText && !$linkRef) {
+            return;
         }
 
-        $username = $user->getName();
-        wfDebugLog('RealUsernames', __METHOD__ . ": personal urls received for " . $username);
+        // These are the elements in the $links that we want to change. Values are "user" or "talk"
+        // to act differently on them.
+        $toProcess = [
+            'user-page' => [
+                'userpage' => 'user',
+            ],
+            'user-menu' => [
+                'userpage' => 'user',
+                'mytalk'   => 'talk',
+            ],
+        ];
+
+        $username = $convertedtext = $user->getName();
 
         // Get the real username for the username
         $realusername = self::get_realusername_from_username($username);
@@ -110,49 +122,71 @@ class RealUsernames implements HtmlPageLinkRendererBeginHook {
         if ($realusername === '') {
             $realusername = $username;
         } else {
-            wfDebugLog('RealUsernames', __METHOD__ . ": personal urls change ". $username . " to " . $realusername);
+            wfDebugLog('RealUsernames', __METHOD__ . ": change '$username' to '$realusername'");
         }
 
-        // Let's apply real usernames to the texts.
-        if ($linkText === true) {
-            // To the "userpage" text
-            if (isset($personal_urls['userpage'])) {
-                if ($personal_urls['userpage']['text'] === $username) {
-                    $text = $realusername;
-                    // With $appendUsername enabled, users with "block" permissions
-                    // see the username together with the real username.
-                    if ($appendUsername === true && $user->isAllowed('block')) {
-                        $text = $text . ' (' . $username . ')';
+        // Let's iterate over all the elements to process, applying the changes within $links (text and href).
+        foreach ($toProcess as $key1 => $value) {
+            if (isset($links[$key1])) {
+                foreach ($value as $key2 => $value2) {
+                    if (isset($links[$key1][$key2])) {
+                        wfDebugLog('RealUsernames', __METHOD__ . ": processing[$key1][$key2], type $value2");
+
+                        // Let's apply real usernames to the texts ($text). Only for "user" cases.
+                        if ($linkText && $value2 === 'user') {
+                            $convertedtext = $realusername;
+                            // With $appendUsername enabled, users with "block" permissions
+                            // see the username together with the real username.
+                            if ($appendUsername && $user->isAllowed('block')) {
+                                // Only if real username and username are different.
+                                if ($username !== $realusername) {
+                                    $convertedtext = $convertedtext . ' (' . $username . ')';
+                                }
+                            }
+                            $links[$key1][$key2]['text'] = $convertedtext;
+                            wfDebugLog('RealUsernames', __METHOD__ . ": links[$key1][$key2]['text'] change to " . $convertedtext);
+                        }
+
+                        // Let's apply real usernames to the hrefs.
+                        if ($linkRef) {
+                            $ns = $value2 === 'user' ? NS_USER : NS_USER_TALK;
+                            // Create a link to the real username page.
+                            // Calculate which the new real target is going to be.
+                            $realTarget = Title::newFromText($realusername, $ns);
+                            $convertedref = $realTarget->getLocalURL();
+                            $classes = [];
+                            $exists = true;
+                            // Get and cache articleID (user and talk page ids) to render a good or wrong link.
+                            $id = self::get_article_id($realTarget);
+
+                            // Add the new class and edit URL if the page does not exist.
+                            if (!$realTarget->isKnown()) {
+                                $convertedref = $realTarget->getLocalURL(['action' => 'edit', 'redlink' => '1']);
+                                $classes[] = 'new';
+                                $exists = false;
+                            }
+                            $links[$key1][$key2]['href'] = $convertedref;
+                            // Classes can be both in "link-class" (array) and "class" (string) elements.
+                            if (isset($links[$key1][$key2]['link-class'])) {
+                                $links[$key1][$key2]['link-class'] = $classes;
+                            }
+                            if (isset($links[$key1][$key2]['class'])) {
+                                $links[$key1][$key2]['class'] = implode(' ', $classes);
+                            }
+                            $links[$key1][$key2]['exists'] = $exists;
+                            wfDebugLog('RealUsernames', __METHOD__ . ": links[$key1][$key2]['href'] change to " . $convertedref);
+                        }
+
+
+
+                    } else {
+                        wfDebugLog('RealUsernames', __METHOD__ . ": Warning: No $key2 in links[$key1]");
                     }
-                    $personal_urls['userpage']['text'] = $text;
                 }
-            }
-            // Nothing to change in the "mytalk" text
-        }
-
-        // Let's apply real usernames to the hrefs.
-        if ($linkRef === true) {
-            // To the "userpage" href
-            if (isset($personal_urls['userpage'])) {
-                $title = Title::newFromText($realusername, NS_USER);
-                if (!is_object($title)) {
-                    throw new MWException(__METHOD__ . " given invalid real username $realusername");
-                }
-                $personal_urls['userpage']['href'] = $title->getLocalURL();
-                $personal_urls['userpage']['class'] = $title->getArticleID() != 0 ? false : 'new';
-            }
-            // To the "mytalk" href
-            if (isset($personal_urls['mytalk'])) {
-                $title = Title::newFromText($realusername, NS_USER_TALK);
-                if (!is_object($title)) {
-                    throw new MWException(__METHOD__ . " given invalid real username $realusername");
-                }
-                $personal_urls['mytalk']['href'] = $title->getLocalURL();
-                $personal_urls['mytalk']['class'] = $title->getArticleID() != 0 ? false : 'new';
+            } else {
+                wfDebugLog('RealUsernames', __METHOD__ . ": Warning: No $key1 in links");
             }
         }
-
-        return true;
     }
 
     /**
@@ -196,7 +230,7 @@ class RealUsernames implements HtmlPageLinkRendererBeginHook {
             wfDebugLog('RealUsernames', __METHOD__ . ": change '$ns:$username' to '$ns:$realusername'");
         }
 
-        // Let's apply real usernames to the texts ($text). Only for use namespace.
+        // Let's apply real usernames to the texts ($text). Only for user namespace.
         if ($linkText && $target->getNamespace() === NS_USER) {
             $convertedtext = $realusername;
             // With $appendUsername enabled, users with "block" permissions
