@@ -2,6 +2,7 @@
 
 namespace MediaWiki\Extension;
 
+use MediaWiki\Hook\ParserBeforeInternalParseHook;
 use MediaWiki\Hook\SkinTemplateNavigation__UniversalHook;
 use MediaWiki\Linker\Hook\HtmlPageLinkRendererBeginHook;
 
@@ -20,7 +21,10 @@ use User;
  * @copyright 2013 onwards Eloy Lafuente (stronk7)
  * @license https://opensource.org/licenses/BSD-3-Clause BSD 3-Clause
  */
-class RealUsernames implements SkinTemplateNavigation__UniversalHook, HtmlPageLinkRendererBeginHook {
+class RealUsernames implements
+    ParserBeforeInternalParseHook,
+    SkinTemplateNavigation__UniversalHook,
+    HtmlPageLinkRendererBeginHook {
 
     /**
      * Let's cache page (articleid) existence for every title, namespace pair.
@@ -33,11 +37,19 @@ class RealUsernames implements SkinTemplateNavigation__UniversalHook, HtmlPageLi
     protected static $realusernames = array();
 
     /**
+     * This applies various final changes to the parser output
+     *
+     * Note that we don't have full access to the output HTML here, so we cannot
+     * check for HTML content, we can only check for text fragments here.
+     * Switching to a different hook (e.g. BeforePageDisplay) would allow us to
+     * do that, but it would be more expensive (prevents caching...). So let's use
+     * this hook unless we really need to access to the HTML.
+     *
      * Replace some text by intercepting the parser:
      *   - userpage-userdoesnotexist: When editing user page. Make it also check for real username.
      *   - ...
      */
-    public static function hookParser(&$parser, &$text, &$strip_state) {
+    public function onParserBeforeInternalParse($parser, &$text, $stripState) {
         // Get the current user.
         $user = RequestContext::getMain()->getUser();
 
@@ -55,8 +67,10 @@ class RealUsernames implements SkinTemplateNavigation__UniversalHook, HtmlPageLi
             return true;
         }
 
-        // userpage-userdoesnotexist
-        if (preg_match('!mw-userpage-userdoesnotexist error!', $text) !== 0) {
+        // We don't want to show the "User account xxxx is not registered" error message. Just clean it
+        // if the real user exists. Note this leaves an empty warning message, but we cannot tweak HTML
+        // here, only text contents.
+        if (preg_match('!User account ".*" is not registered!', $text) !== 0) {
             wfDebugLog('RealUsernames', __METHOD__ . ": Text intercepted " . $text);
             // Get the title, to check if this is a user page being edited/create.
             $title = $parser->getTitle();
@@ -67,9 +81,9 @@ class RealUsernames implements SkinTemplateNavigation__UniversalHook, HtmlPageLi
                 // User exists, don't output the error
                 if ( $s !== false ) {
                     $text = '';
-                    wfDebugLog('RealUsernames', __METHOD__ . ": User exists by real username. Cleaning error message");
+                    wfDebugLog('RealUsernames', __METHOD__ . ": User exists by real username. Cleaning warning message");
                 } else {
-                    wfDebugLog('RealUsernames', __METHOD__ . ": User does not exist by real username. Keeping error message");
+                    wfDebugLog('RealUsernames', __METHOD__ . ": User does not exist by real username. Keeping warning message");
                 }
             }
         }

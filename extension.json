@@ -37,11 +37,9 @@
 		}
 	},
 	"Hooks": {
-		"HtmlPageLinkRendererBegin": "RealUsernames",
-        "SkinTemplateNavigation::Universal": "RealUsernames",
-		"ParserBeforeInternalParse": [
-			"MediaWiki\\Extension\\RealUsernames::hookParser"
-		]
+		"ParserBeforeInternalParse": "RealUsernames",
+		"SkinTemplateNavigation::Universal": "RealUsernames",
+		"HtmlPageLinkRendererBegin": "RealUsernames"
 	},
 	"manifest_version": 2
 }
