@@ -2,7 +2,6 @@
 
 namespace MediaWiki\Extension;
 
-use MediaWiki\Hook\ParserBeforeInternalParseHook;
 use MediaWiki\Hook\SkinTemplateNavigation__UniversalHook;
 use MediaWiki\Linker\Hook\HtmlPageLinkRendererBeginHook;
 
@@ -22,7 +21,6 @@ use User;
  * @license https://opensource.org/licenses/BSD-3-Clause BSD 3-Clause
  */
 class RealUsernames implements
-    ParserBeforeInternalParseHook,
     SkinTemplateNavigation__UniversalHook,
     HtmlPageLinkRendererBeginHook {
 
@@ -35,68 +33,6 @@ class RealUsernames implements
      * Let's cache the already found username => realusername pairs.
      */
     protected static $realusernames = array();
-
-    /**
-     * This applies various final changes to the parser output
-     *
-     * Note that we don't have full access to the output HTML here, so we cannot
-     * check for HTML content, we can only check for text fragments here.
-     * Switching to a different hook (e.g. BeforePageDisplay) would allow us to
-     * do that, but it would be more expensive (prevents caching...). So let's use
-     * this hook unless we really need to access to the HTML.
-     *
-     * Replace some text by intercepting the parser:
-     *   - userpage-userdoesnotexist: When editing user page. Make it also check for real username.
-     *   - ...
-     */
-    public function onParserBeforeInternalParse($parser, &$text, $stripState) {
-        // Get the current user.
-        $user = RequestContext::getMain()->getUser();
-
-        // Get the configuration.
-        $config = ConfigFactory::getDefaultInstance()->makeConfig('RealUsernames');
-        $linkText = $config->get('RealUsernames_linktext');
-        $linkRef = $config->get('RealUsernames_linkref');
-        $appendUsername = $config->get('RealUsernames_append_username');
-
-        // Get the current user.
-        $user = RequestContext::getMain()->getUser();
-
-        // Nothing to do if text and ref replacement are not enabled.
-        if ($linkText !== true && $linkRef !== true) {
-            return true;
-        }
-
-        // We don't want to show the "User account xxxx is not registered" error message. Just clean it
-        // if the real user exists. Note this leaves an empty warning message, but we cannot tweak HTML
-        // here, only text contents.
-        if (preg_match('!User account ".*" is not registered!', $text) !== 0) {
-            wfDebugLog('RealUsernames', __METHOD__ . ": Text intercepted " . $text);
-            // Get the title, to check if this is a user page being edited/create.
-            $title = $parser->getTitle();
-            if (in_array($title->getNamespace(), array(NS_USER, NS_USER_TALK))) {
-                // This is a real username, in user or talk page, verify it exists in DB.
-                $dbr = wfGetDB( DB_REPLICA );
-                $s = $dbr->selectRow( 'user', array( 'user_id' ), array( 'user_real_name' => $title->getText() ), __METHOD__ );
-                // User exists, don't output the error
-                if ( $s !== false ) {
-                    $text = '';
-                    wfDebugLog('RealUsernames', __METHOD__ . ": User exists by real username. Cleaning warning message");
-                } else {
-                    wfDebugLog('RealUsernames', __METHOD__ . ": User does not exist by real username. Keeping warning message");
-                }
-            }
-        }
-
-        // Note that signatures cannot be handled here because they are processed on save
-        // (pstPass2) and not by the parser itself, so they arrive here already converted. It
-        // would be possible to add an ArticlePrepareTextForEdit but instead we have applied
-        // a safer and quicker 1-line hack to getUserSig().
-
-        // Others go here...
-
-        return true;
-    }
 
     /**
      * Replace the texts and refs in the personal urls (top-right)

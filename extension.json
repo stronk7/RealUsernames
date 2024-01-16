@@ -37,7 +37,6 @@
 		}
 	},
 	"Hooks": {
-		"ParserBeforeInternalParse": "RealUsernames",
 		"SkinTemplateNavigation::Universal": "RealUsernames",
 		"HtmlPageLinkRendererBegin": "RealUsernames"
 	},
