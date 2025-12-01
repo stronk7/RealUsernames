@@ -4,10 +4,12 @@ namespace MediaWiki\Extension;
 
 use MediaWiki\Hook\SkinTemplateNavigation__UniversalHook;
 use MediaWiki\Linker\Hook\HtmlPageLinkRendererBeginHook;
+use MediaWiki\MediaWikiServices;
 
 use ConfigFactory;
 use Html;
 use HtmlArmor;
+use IDBAccessObject;
 use Linker;
 use RequestContext;
 use Title;
@@ -42,7 +44,7 @@ class RealUsernames implements
         $user = RequestContext::getMain()->getUser();
 
         // Get the configuration.
-        $config = ConfigFactory::getDefaultInstance()->makeConfig('RealUsernames');
+        $config = MediaWikiServices::getInstance()->getConfigFactory()->makeConfig('RealUsernames');
         $linkText = $config->get('RealUsernames_linktext');
         $linkRef = $config->get('RealUsernames_linkref');
         $appendUsername = $config->get('RealUsernames_append_username');
@@ -147,7 +149,7 @@ class RealUsernames implements
         $user = RequestContext::getMain()->getUser();
 
         // Get the configuration.
-        $config = ConfigFactory::getDefaultInstance()->makeConfig('RealUsernames');
+        $config = MediaWikiServices::getInstance()->getConfigFactory()->makeConfig('RealUsernames');
         $linkText = $config->get('RealUsernames_linktext');
         $linkRef = $config->get('RealUsernames_linkref');
         $appendUsername = $config->get('RealUsernames_append_username');
@@ -244,7 +246,7 @@ class RealUsernames implements
         // If the $title is not in the cache, let's look for it.
         if (!isset(self::$articleids[$cachekey])) {
             wfDebugLog('RealUsernames', __METHOD__ . ": not cached articleid: " . $cachekey);
-            self::$articleids[$cachekey] = $title->getArticleID($title::GAID_FOR_UPDATE);
+            self::$articleids[$cachekey] = $title->getArticleID(IDBAccessObject::READ_LATEST);
         } else {
             wfDebugLog('RealUsernames', __METHOD__ . ": cached articleid: " . self::$articleids[$cachekey] . " for " . $cachekey);
         }
